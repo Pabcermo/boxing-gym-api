@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: boxing-gym-api
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/boxinggym}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update        # En producción usa 'validate' o Flyway
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+server:
+  port: ${PORT:8080}          # Cloud Run inyecta PORT automáticamente
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini          # Económico y muy capaz
+  url: https://api.openai.com/v1/chat/completions
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health       # Para health check de Cloud Run

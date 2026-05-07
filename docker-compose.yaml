@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+
+  # Base de datos PostgreSQL local
+  postgres:
+    image: postgres:16-alpine
+    container_name: boxinggym-postgres
+    environment:
+      POSTGRES_DB: boxinggym
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"           # Expone PostgreSQL en tu máquina local
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # Persiste los datos
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Tu aplicación Spring Boot
+  app:
+    build: .                  # Usa el Dockerfile de la raíz
+    container_name: boxinggym-app
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/boxinggym
+      #                         ↑ nombre del servicio de postgres arriba
+      DB_USER: postgres
+      DB_PASS: password
+      OPENAI_API_KEY: ${OPENAI_API_KEY}   # Lee de tu .env local
+    depends_on:
+      postgres:
+        condition: service_healthy    # Espera a que postgres esté listo
+    restart: on-failure
+
+volumes:
+  postgres_data:
