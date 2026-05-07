@@ -11,7 +11,7 @@
 	</parent>
 
 	<groupId>com.boxinggym</groupId>
-	<artifactId>api</artifactId>
+	<artifactId>boxing-gym-api</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>boxing-gym-api</name>
 
