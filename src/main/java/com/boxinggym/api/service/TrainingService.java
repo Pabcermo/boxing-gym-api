@@ -20,7 +20,7 @@ public class TrainingService {
 
     private final TrainingPlanRepository trainingPlanRepository;
     private final UserRepository userRepository;
-    private final WebClient openAIWebClient;    // Lo configuramos en el siguiente paso
+    private final WebClient openAIWebClient;
 
     @Value("${openai.model}")
     private String model;

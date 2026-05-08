@@ -2,39 +2,73 @@ version: '3.8'
 
 services:
 
-  # Base de datos PostgreSQL local
   postgres:
     image: postgres:16-alpine
     container_name: boxinggym-postgres
     environment:
       POSTGRES_DB: boxinggym
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"           # Expone PostgreSQL en tu máquina local
+      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data   # Persiste los datos
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Tu aplicación Spring Boot
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: boxinggym-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: boxinggym-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
   app:
-    build: .                  # Usa el Dockerfile de la raíz
+    build: .
     container_name: boxinggym-app
     ports:
       - "8080:8080"
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/boxinggym
-      #                         ↑ nombre del servicio de postgres arriba
       DB_USER: postgres
-      DB_PASS: password
-      OPENAI_API_KEY: ${OPENAI_API_KEY}   # Lee de tu .env local
+      DB_PASS: postgres
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092   # ← nombre del servicio kafka
     depends_on:
       postgres:
-        condition: service_healthy    # Espera a que postgres esté listo
+        condition: service_healthy
+      kafka:
+        condition: service_healthy           # ← espera a que kafka esté listo
     restart: on-failure
 
 volumes:

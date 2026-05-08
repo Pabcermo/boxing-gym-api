@@ -1,253 +1,278 @@
 # 🥊 Boxing Gym API
 
-API REST para gestión de gimnasio de boxeo con recomendaciones de entrenamiento personalizadas mediante Inteligencia Artificial.
+> REST API para gestión de gimnasio de boxeo con recomendaciones de entrenamiento generadas por IA y arquitectura event-driven con Apache Kafka.
+> Desplegada en **Google Cloud Run** con pipeline **CI/CD automatizado via GitHub Actions**.
 
 [![Deploy to Cloud Run](https://github.com/Pabcermo/boxing-gym-api/actions/workflows/deploy.yml/badge.svg)](https://github.com/Pabcermo/boxing-gym-api/actions/workflows/deploy.yml)
+![Java](https://img.shields.io/badge/Java-21-orange)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green)
+![GCP](https://img.shields.io/badge/GCP-Cloud%20Run-blue)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-blue)
+![Kafka](https://img.shields.io/badge/Apache%20Kafka-3.x-black)
 
-## Stack Tecnológico
+---
 
-| Capa | Tecnología |
-|------|------------|
-| Backend | Java 21 · Spring Boot 3 |
-| Base de Datos | PostgreSQL 18 (Cloud SQL) |
-| ORM | JPA / Hibernate |
-| IA | OpenAI GPT-4o mini |
+## 📋 Tabla de contenidos
+
+- [Descripción](#-descripción)
+- [Arquitectura](#-arquitectura)
+- [Stack tecnológico](#-stack-tecnológico)
+- [Modelo de datos](#-modelo-de-datos)
+- [Endpoints](#-endpoints-api)
+- [Eventos Kafka](#-eventos-kafka)
+- [Ejecutar en local](#-ejecutar-en-local)
+- [Despliegue en GCP](#-despliegue-en-gcp)
+- [CI/CD Pipeline](#-cicd-pipeline)
+- [Seguridad](#-seguridad)
+
+---
+
+## 📖 Descripción
+
+API REST desarrollada con **Java 21 y Spring Boot 3** que permite:
+
+- Gestión de usuarios del gimnasio con niveles de experiencia
+- Consulta y reserva de sesiones de boxeo en tiempo real
+- Cancelación de reservas con devolución automática de cupos
+- Generación de planes de entrenamiento personalizados mediante **OpenAI GPT-4o**
+- Sistema de notificaciones asíncrono mediante **Apache Kafka**
+
+---
+
+## 🏗 Arquitectura
+┌─────────────────────────────────────────────────────────┐
+│                  Cliente (Postman / App)                  │
+└─────────────────────┬───────────────────────────────────┘
+│ HTTP REST
+┌─────────────────────▼───────────────────────────────────┐
+│                   Spring Boot API                         │
+│                                                           │
+│  Controller → Service → Repository → PostgreSQL           │
+│                  │                                        │
+│                  │ Publica eventos                        │
+│                  ▼                                        │
+│            Apache Kafka                                   │
+│          (booking-events)                                 │
+│                  │                                        │
+│                  │ Consume eventos                        │
+│                  ▼                                        │
+│       NotificationConsumer → PostgreSQL                   │
+│                                                           │
+│  TrainingService → OpenAI GPT-4o                         │
+└───────────────────────────────────────────────────────────┘
+│
+┌─────────────────────▼───────────────────────────────────┐
+│                Google Cloud Platform                      │
+│                                                           │
+│   Cloud Run  │  Cloud SQL  │  Secret Manager             │
+└─────────────────────────────────────────────────────────┘
+
+### Capas de la aplicación
+controller/   →  Recibe peticiones HTTP, valida DTOs
+service/      →  Lógica de negocio, publica eventos Kafka
+repository/   →  Acceso a datos con Spring Data JPA
+model/        →  Entidades JPA (tablas PostgreSQL)
+dto/          →  Objetos de transferencia de datos
+event/        →  Eventos Kafka (BookingEvent)
+config/       →  Configuración de OpenAI, Kafka, errores
+
+---
+
+## 🛠 Stack tecnológico
+
+| Categoría | Tecnología |
+|-----------|-----------|
+| Lenguaje | Java 21 |
+| Framework | Spring Boot 3.x |
+| Base de datos | PostgreSQL 18 (Cloud SQL) |
+| ORM | Spring Data JPA / Hibernate |
+| Mensajería | Apache Kafka |
+| IA | OpenAI GPT-4o Mini |
 | Cloud | Google Cloud Run |
 | Secretos | GCP Secret Manager |
-| Contenedor | Docker multi-stage build |
+| Contenedores | Docker (multi-stage build) |
 | CI/CD | GitHub Actions |
+| Auth GCP | Workload Identity Federation |
 
 ---
 
-## Arquitectura
-
-```
-┌─────────────────────────────────────────────┐
-│              GitHub Actions CI/CD            │
-│         push → build → deploy               │
-└───────────────────┬─────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────┐
-│              Google Cloud Run                │
-│                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │Controller│→ │ Service  │→ │Repository│  │
-│  └──────────┘  └──────────┘  └──────────┘  │
-│                     │                       │
-│              ┌──────┴──────┐                │
-│              ▼             ▼                │
-│         OpenAI API    Cloud SQL             │
-│         (GPT-4o)     (PostgreSQL)           │
-└─────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────┐
-│           GCP Secret Manager                │
-│   DB_URL · DB_USER · DB_PASS · OPENAI_KEY   │
-└─────────────────────────────────────────────┘
-```
-
----
-
-## Modelo de Datos
-
-```
+## 🗄 Modelo de datos
 users
-├── id, name, email
-└── level (BEGINNER / INTERMEDIATE / ADVANCED)
-
+├── id (PK)
+├── name
+├── email (UNIQUE)
+├── level (BEGINNER, INTERMEDIATE, ADVANCED)
+└── created_at
 sessions
-├── id, date, capacity, availableSpots
+├── id (PK)
+├── date
+├── capacity
+├── available_spots
 ├── coach
-└── type (BOXING / CARDIO / SPARRING)
-
+└── type (BOXING, CARDIO, SPARRING)
 bookings
-├── id, status (CONFIRMED / CANCELLED)
-├── user_id → users
-└── session_id → sessions
-
+├── id (PK)
+├── user_id (FK → users)
+├── session_id (FK → sessions)
+├── status (CONFIRMED, CANCELLED)
+├── created_at
+└── UNIQUE(user_id, session_id)
 training_plans
-├── id, goal, generated_plan
-└── user_id → users
-```
+├── id (PK)
+├── user_id (FK → users)
+├── goal
+├── generated_plan (TEXT)
+└── created_at
+notifications
+├── id (PK)
+├── user_id (FK → users)
+├── message
+├── type (BOOKING_CONFIRMED, BOOKING_CANCELLED)
+├── is_read
+└── created_at
 
 ---
 
-## Endpoints
+## 🔌 Endpoints API
 
 ### Usuarios
-```
-POST   /users              Registrar usuario
-GET    /users/{id}         Obtener usuario
-```
+POST   /users              Crear usuario
+GET    /users/{id}         Obtener usuario por ID
 
 ### Sesiones
-```
 POST   /sessions           Crear sesión
-GET    /sessions           Ver sesiones disponibles
-```
+GET    /sessions           Listar sesiones disponibles
 
 ### Reservas
-```
 POST   /bookings                  Crear reserva
-GET    /users/{id}/bookings       Ver reservas del usuario
+GET    /users/{id}/bookings       Ver reservas de un usuario
 PATCH  /bookings/{id}/cancel      Cancelar reserva
-```
 
-### IA
-```
-POST   /training/recommendation   Generar plan con OpenAI
-```
+### Entrenamiento IA
+POST   /training/recommendation   Generar plan con OpenAI GPT-4o
 
-### Health
-```
-GET    /actuator/health    Estado del servicio
-```
+### Notificaciones
+GET    /notifications/{userId}          Todas las notificaciones
+GET    /notifications/{userId}/unread   Solo no leídas
+PATCH  /notifications/{id}/read         Marcar como leída
 
----
-
-## CI/CD — GitHub Actions
-
-Cada `push` a `main` ejecuta automáticamente:
-
-```
-git push origin main
-        ↓
-GitHub Actions
-        ↓
-Autenticación con GCP (Workload Identity)
-        ↓
-Build imagen Docker
-        ↓
-Push a Container Registry
-        ↓
-Deploy automático en Cloud Run
-        ↓
-API actualizada en producción ✅
-```
-
-Sin claves JSON expuestas. Autenticación mediante **Workload Identity Federation**.
+### Health Check
+GET    /actuator/health    Estado de la aplicación
 
 ---
 
-## Seguridad
+## 📨 Eventos Kafka
 
-- Credenciales gestionadas con **GCP Secret Manager**
-- Autenticación CI/CD con **Workload Identity Federation** (sin claves JSON)
-- Variables de entorno inyectadas en runtime, nunca en el código
-- `.env` y `target/` excluidos del repositorio
+Cada vez que se crea o cancela una reserva se publica un evento en Kafka:
+
+**Topic:** `booking-events`
+**Key:** `userId` (garantiza orden por usuario)
+**Particiones:** 3
+
+```json
+{
+  "bookingId": 1,
+  "userId": 1,
+  "userName": "Carlos López",
+  "sessionId": 1,
+  "sessionDate": "2026-06-01T10:00:00",
+  "sessionType": "BOXING",
+  "eventType": "BOOKING_CONFIRMED",
+  "occurredAt": "2026-05-08T12:00:00"
+}
+```
+
+El consumer `BookingEventConsumer` escucha el topic y guarda
+una notificación en PostgreSQL automáticamente.
 
 ---
 
-## Ejecutar en local
+## 🚀 Ejecutar en local
 
 ### Requisitos
 - Docker Desktop
-- Java 21
-- Maven
+- Git
 
-### Levantar con Docker Compose
+### Pasos
 
+**1. Clona el repositorio**
 ```bash
-# Clonar el repositorio
 git clone https://github.com/Pabcermo/boxing-gym-api.git
 cd boxing-gym-api
+```
 
-# Crear archivo de variables de entorno
-cp .env.example .env
-# Edita .env con tus credenciales
+**2. Crea el archivo `.env`**
+OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx
 
-# Levantar app + PostgreSQL
+**3. Levanta todos los servicios**
+```bash
 docker compose up --build
 ```
 
-La API estará disponible en `http://localhost:8080`
+Esto levanta automáticamente:
+- 🐘 PostgreSQL en `localhost:5432`
+- 📨 Kafka en `localhost:9092`
+- 🌀 Zookeeper en `localhost:2181`
+- 🚀 API en `localhost:8080`
 
-### Variables de entorno necesarias
-
+**4. Verifica que está funcionando**
 ```bash
-# .env (nunca subir al repo)
-DB_URL=jdbc:postgresql://localhost:5432/boxinggym
-DB_USER=postgres
-DB_PASS=tu_password
-OPENAI_API_KEY=sk-proj-...
+curl http://localhost:8080/actuator/health
+# {"status":"UP"}
 ```
 
 ---
 
-## Despliegue en GCP
+## ☁️ Despliegue en GCP(https://boxing-gym-api-961164869972.europe-west1.run.app)
 
-### Requisitos
-- Google Cloud CLI instalado
-- Proyecto GCP con Cloud Run y Cloud SQL activos
+La aplicación se despliega en **Google Cloud Run** conectada a **Cloud SQL PostgreSQL**.
+Las credenciales se gestionan con **Secret Manager**.
 
-### Despliegue manual
+Variables configuradas como secretos en GCP:
+DB_URL          →  URL de conexión a Cloud SQL via socket factory
+DB_USER         →  Usuario PostgreSQL
+DB_PASS         →  Contraseña PostgreSQL
+OPENAI_API_KEY  →  API Key de OpenAI
 
+Para desplegar manualmente:
 ```bash
-# Linux / Mac / Git Bash
-chmod +x deploy.sh
 ./deploy.sh
-
-# Windows PowerShell
-.\deploy.ps1
-```
-
-El script gestiona automáticamente:
-- Habilitación de APIs
-- Creación de secretos en Secret Manager
-- Permisos IAM
-- Build y push de imagen Docker
-- Despliegue en Cloud Run
-
-### Despliegue automático
-
-Cualquier `push` a `main` despliega automáticamente via GitHub Actions.
-
----
-
-## Estructura del Proyecto
-
-```
-boxing-gym-api/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml          ← CI/CD pipeline
-├── src/main/java/com/boxinggym/api/
-│   ├── controller/             ← Endpoints REST
-│   ├── service/                ← Lógica de negocio
-│   ├── repository/             ← Acceso a datos (JPA)
-│   ├── model/                  ← Entidades JPA
-│   ├── dto/                    ← Objetos de transferencia
-│   └── config/                 ← OpenAI + Exception Handler
-├── src/main/resources/
-│   └── application.yml         ← Configuración
-├── Dockerfile                  ← Multi-stage build
-├── docker-compose.yml          ← Entorno local
-├── deploy.sh                   ← Script despliegue (Linux/Mac/Git Bash)
-├── deploy.ps1                  ← Script despliegue (PowerShell)
-└── pom.xml                     ← Dependencias Maven
 ```
 
 ---
 
-## Producción
+## 🔄 CI/CD Pipeline
 
-API desplegada en Google Cloud Run:
+Cada `push` a `main` activa automáticamente el pipeline de GitHub Actions:
+git push origin main
+↓
+GitHub Actions se activa
+↓
+Autenticación con GCP (Workload Identity Federation)
+↓
+Build imagen Docker
+↓
+Push a Container Registry (gcr.io)
+↓
+Deploy automático en Cloud Run
+↓
+API actualizada en producción ✅
 
-```
-https://boxing-gym-api-961164869972.europe-west1.run.app
-```
+### Autenticación sin claves JSON
 
-Health check:
-```
-https://boxing-gym-api-961164869972.europe-west1.run.app/actuator/health
-```
+Se usa **Workload Identity Federation** para que GitHub Actions
+se autentique con GCP sin guardar claves JSON en ningún sitio.
+
+Secretos configurados en GitHub:
+WIF_PROVIDER          →  Workload Identity Provider de GCP
+WIF_SERVICE_ACCOUNT   →  Cuenta de servicio con permisos de despliegue
 
 ---
 
-## Autor
+## 🔒 Seguridad
 
-**Pablo Cerro Montoya**  
-Backend Engineer · Java · Spring Boot · GCP  
-[LinkedIn](https://linkedin.com/in/pablo-cerro) · [GitHub](https://github.com/Pabcermo)
+- ✅ Credenciales gestionadas con **GCP Secret Manager**
+- ✅ Sin claves hardcodeadas en el código ni en variables de entorno del repo
+- ✅ Autenticación GCP sin claves JSON via **Workload Identity Federation**
+- ✅ `.env` en `.gitignore`, nunca sube al repositorio
+- ✅ Docker multi-stage build, imagen final sin código fuente ni Maven

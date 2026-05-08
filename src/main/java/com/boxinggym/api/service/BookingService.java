@@ -2,8 +2,10 @@ package com.boxinggym.api.service;
 
 import com.boxinggym.api.dto.BookingDTO;
 import com.boxinggym.api.dto.BookingResponseDTO;
+import com.boxinggym.api.event.BookingEvent;
 import com.boxinggym.api.model.Booking;
 import com.boxinggym.api.model.Booking.BookingStatus;
+import com.boxinggym.api.model.Notification;
 import com.boxinggym.api.model.Session;
 import com.boxinggym.api.model.User;
 import com.boxinggym.api.repository.BookingRepository;
@@ -11,6 +13,8 @@ import com.boxinggym.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
@@ -22,6 +26,7 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final SessionService sessionService;
+    private final BookingEventProducer eventProducer;
 
     @Transactional  // Si algo falla, hace rollback completo (no queda a medias)
     public BookingResponseDTO createBooking(BookingDTO dto) {
@@ -48,6 +53,18 @@ public class BookingService {
         // status se setea en @PrePersist como CONFIRMED
 
         Booking saved = bookingRepository.save(booking);
+
+        // ← Publicar evento de reserva confirmada
+        eventProducer.publishEvent(new BookingEvent(
+                saved.getId(),
+                user.getId(),
+                user.getName(),
+                session.getId(),
+                session.getDate(),
+                session.getType().name(),
+                Notification.NotificationType.BOOKING_CONFIRMED,
+                LocalDateTime.now()
+        ));
         return toResponseDTO(saved);
     }
 
@@ -67,6 +84,18 @@ public class BookingService {
         // Cambiar estado
         booking.setStatus(BookingStatus.CANCELLED);
         Booking saved = bookingRepository.save(booking);
+        // ← Publicar evento de reserva cancelada
+        eventProducer.publishEvent(new BookingEvent(
+                saved.getId(),
+                saved.getUser().getId(),
+                saved.getUser().getName(),
+                saved.getSession().getId(),
+                saved.getSession().getDate(),
+                saved.getSession().getType().name(),
+                Notification.NotificationType.BOOKING_CANCELLED,
+                LocalDateTime.now()
+        ));
+
 
         return toResponseDTO(saved);
     }
